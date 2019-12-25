@@ -18,7 +18,7 @@ all: bin/ix
 
 .PHONY: run
 run: bin/ix
-	$<
+	$< test.db src
 
 .PHONY: clean
 clean:
