@@ -23,7 +23,8 @@ static int
 print_entry(const char * const fp, const struct stat * const info,
             const int typeflag, struct FTW * pathinfo)
 {
-    fprintf(stdout, " ... %s\n", fp);
+    const double bytes = (double)info->st_size;
+    fprintf(stdout, " ... %s (%0.0f)\n", fp, bytes);
     return 0;
 }
 
