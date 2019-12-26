@@ -207,6 +207,8 @@ test_fnv64(enum fnv_type hash_type, Fnv64_t init_hval,
 		    return tstnum;
 		}
 	    	break;
+        default:
+            break;
 	    }
 	    break;
 
