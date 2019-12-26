@@ -1,3 +1,10 @@
+SHELL := bash
+.ONESHELL:
+.SHELLFLAGS := -eu -o -pipefail -c
+.DELETE_ON_ERROR:
+MAKEFLAGS += --warn-undefined-variables
+MAKEFLAGS += --no-builtin-rules
+
 CFLAGS = -Oz -O3
 INCLUDE = \
 		-I ./src \
@@ -6,6 +13,7 @@ INCLUDE = \
 		-I /usr/local/include \
 		-I /usr/local/opt/icu4c/include
 LIBDIR = \
+		-L ./src/fnv \
 		-L /usr/local/opt/icu4c/lib
 LIBS = \
 		-lreadline \
@@ -17,7 +25,7 @@ LIBS = \
 		-licuuc \
 		-ldl
 
-CC = clang $(CFLAGS)
+CC = clang
 
 SQLITE_FEATURES = \
 		-DSQLITE_THREADSAFE=1 \
@@ -42,6 +50,7 @@ run: bin/ix
 .PHONY: clean
 clean:
 	-rm -rf bin obj
+	-(cd src/fnv; make clobber)
 
 bin:
 	mkdir bin
@@ -55,11 +64,14 @@ obj/sqlite3.o: src/sqlite/sqlite3.c | obj
 obj/shell.o: src/sqlite/shell.c | obj
 	$(CC) $(CFLAGS) $(SQLITE_FEATURES) $(INCLUDE) -o $@ $^ -c
 
-obj/main.o: src/main.c | obj
+obj/main.o: src/main.c | obj src/fnv/libfnv.a
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ -c
+
+src/fnv/libfnv.a: src/fnv/*.c
+	(cd src/fnv; make libfnv.a)
 
 bin/sqlite3: obj/sqlite3.o obj/shell.o | bin
 	$(CC) $(CFLAGS) $(SQLITE_FEATURES) $(LIBDIR) -o $@ $^ $(LIBS)
 
-bin/ix: obj/sqlite3.o obj/main.o | bin
-	$(CC) $(CFLAGS) $(SQLITE_FEATURES) $(LIBDIR) -o $@ $^ $(LIBS)
+bin/ix: obj/sqlite3.o obj/main.o | bin src/fnv/libfnv.a
+	$(CC) $(CFLAGS) $(SQLITE_FEATURES) $(LIBDIR) -o $@ $^ $(LIBS) -lfnv
