@@ -28,6 +28,11 @@ static const char * const INIT_DB =
     "  blob_hash INTEGER,"
     "  ordinal INTEGER,"
     "  UNIQUE(file_hash, blob_hash, ordinal));"
+    "CREATE TABLE IF NOT EXISTS file_tags ("
+    "  file_hash INTEGER,"
+    "  tag_key TEXT,"
+    "  tag_val TEXT,"
+    "  UNIQUE(file_hash, tag_key, tag_val));"
     ;
 static const char * const ADD_FILE =
     "INSERT OR IGNORE INTO files (path, hash, size)"
@@ -38,6 +43,10 @@ static const char * const ADD_BLOB =
 static const char * const ADD_FILE_BLOB =
     "INSERT OR IGNORE INTO file_blobs (file_hash, blob_hash, ordinal)"
     " VALUES(?, ?, ?)";
+static const char * const ADD_FILE_TAG =
+    "INSERT OR IGNORE INTO file_tags (file_hash, tag_key, tag_val)"
+    " VALUES(?, ?, ?)";
+
 
 struct node {
     Fnv64_t hash;
@@ -130,6 +139,29 @@ insert_file_blob(Fnv64_t file_hash, Fnv64_t blob_hash, int ordinal)
     sqlite3_finalize(stmt);
 }
 
+void
+insert_file_tag(Fnv64_t file_hash, const char * const key,
+                const char * const val)
+{
+    sqlite3_stmt * stmt;
+
+    if(SQLITE_OK == sqlite3_prepare_v2(DB, ADD_FILE_TAG, -1, &stmt, NULL)) {
+        if(SQLITE_OK == sqlite3_bind_int64(stmt, 1, file_hash)) {
+            if(SQLITE_OK == sqlite3_bind_text(stmt, 2, key, strnlen(key, 1024),
+                                              SQLITE_STATIC)) {
+                if(SQLITE_OK == sqlite3_bind_text(stmt, 3, val, strnlen(val, 1024),
+                                                  SQLITE_STATIC)) {
+                    if(SQLITE_DONE == sqlite3_step(stmt)) {
+                        // SUCCESS
+                    }
+                }
+            }
+        }
+    }
+
+    sqlite3_finalize(stmt);
+}
+
 unsigned long long int
 fnv_hash(const char * const fp, const double len)
 {
@@ -168,6 +200,7 @@ fnv_hash(const char * const fp, const double len)
     }
 
     insert_file(fp, hash, len);
+    insert_file_tag(hash, "path", fp);
 
     while(0 != root) {
         insert_file_blob(hash, root->hash, root->ordinal);
