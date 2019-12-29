@@ -9,6 +9,7 @@
 #include "fnv/fnv.h"
 
 sqlite3 * DB = 0;
+char * db_name = 0;
 
 static const size_t MAX_LEN = 1 << 30;
 static const char * const INIT_DB =
@@ -135,9 +136,11 @@ fnv_hash(const char * const fp, const double len)
     FILE * fd = 0;
     const size_t max = len < MAX_LEN ? len : MAX_LEN;
     size_t read = 0;
+    size_t total = 0;
     short ordinal = 0;
     Fnv64_t hash = FNV1A_64_INIT;
     struct node * root = 0;
+    //fprintf(stderr, "\t\t\t\(%s) %lu/%f\n", fp, max, len);
 
     if ((fd = fopen(fp, "rb")) == NULL) {
         fprintf(stderr, "Can't open file %s; %s\n", fp, strerror(errno));
@@ -148,18 +151,29 @@ fnv_hash(const char * const fp, const double len)
     char * buf = malloc(max);
 
     while (0 != (read = fread(buf,  1, max, fd))) {
+        if(total >= len) {
+            fprintf(
+                stderr,
+                "\t\tfile %s was changed while being read; breaking...\n",
+                fp);
+            break;
+        }
+
         Fnv64_t blob_hash = FNV1A_64_INIT;
         blob_hash = fnv_64a_buf(buf, read, blob_hash);
         insert_blob(blob_hash, read, buf);
         root = new_node(blob_hash, ordinal++, root);
         hash = fnv_64a_buf(buf, read, hash);
+        total += read;
     }
 
     insert_file(fp, hash, len);
 
     while(0 != root) {
         insert_file_blob(hash, root->hash, root->ordinal);
-        root = root->prev;
+        struct node * prev = root->prev;
+        free(root);
+        root = prev;
     }
 
     fclose(fd);
@@ -171,6 +185,11 @@ static int
 print_entry(const char * const fp, const struct stat * const info,
             const int typeflag, struct FTW * pathinfo)
 {
+    if(0 == strncmp(fp, db_name, strnlen(db_name, 1024))) {
+        fprintf(stdout, " --- (db file) %s\n", fp);
+        return 0;
+    }
+
     double bytes = 0;
     unsigned long long int hash = 0;
 
@@ -182,12 +201,13 @@ print_entry(const char * const fp, const struct stat * const info,
 
     case FTW_F:
         bytes = (double)info->st_size;
+        fprintf(stdout, " ... %s (%0.0f) ", fp, bytes);
 
         if((hash = fnv_hash(fp, bytes)) == 0) {
             hash = 0;
         };
 
-        fprintf(stdout, " ... %s %llx (%0.0f)\n", fp, hash, bytes);
+        fprintf(stdout, "%llx\n", hash);
 
         break;
 
@@ -238,6 +258,7 @@ main(int argc, char ** argv)
         return(1);
     }
 
+    db_name = argv[1];
     rc = sqlite3_open(argv[1], &DB);
 
     if(rc) {
