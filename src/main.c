@@ -181,7 +181,6 @@ store_file(const char * const fp, const double len)
 
     if ((fd = fopen(fp, "rb")) == NULL) {
         fprintf(stderr, "Can't open file %s; %s\n", fp, strerror(errno));
-        fclose(fd);
         return 0;
     };
 
@@ -205,8 +204,15 @@ store_file(const char * const fp, const double len)
     }
 
     fclose(fd);
-    buf = realloc(buf, MAX_PATH);
     char * bp = buf;
+
+    if (0 == (buf = realloc(buf, MAX_PATH))) {
+        free(bp);
+        fprintf(stderr, "Can't realloc space... bailing\n");
+        return 0;
+    }
+
+    bp = buf;
     size_t cwd_len = 0;
 
     if('/' != fp[0]) {
