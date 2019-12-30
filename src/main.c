@@ -3,49 +3,54 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "sqlite3.h"
 #include "main.h"
 #include "fnv/fnv.h"
 
 sqlite3 * DB = 0;
-char * db_name = 0;
 
+static const size_t MAX_PATH = 4096;
 static const size_t MAX_LEN = 1 << 30;
 static const char * const INIT_DB =
     "CREATE TABLE IF NOT EXISTS files ("
-    "  path TEXT,"
-    "  hash INTEGER,"
-    "  size INTEGER,"
-    "  UNIQUE(path, hash, size));"
+    " path TEXT,"
+    " hash INTEGER,"
+    " size INTEGER,"
+    " UNIQUE(path, hash, size));"
     "CREATE TABLE IF NOT EXISTS blobs ("
-    "  hash INTEGER,"
-    "  size INTEGER,"
-    "  blob BLOB,"
-    "  UNIQUE(hash, size));"
+    " hash INTEGER,"
+    " size INTEGER,"
+    " blob BLOB,"
+    " UNIQUE(hash, size));"
     "CREATE TABLE IF NOT EXISTS file_blobs ("
-    "  file_hash INTEGER,"
-    "  blob_hash INTEGER,"
-    "  ordinal INTEGER,"
-    "  UNIQUE(file_hash, blob_hash, ordinal));"
+    " file_hash INTEGER,"
+    " blob_hash INTEGER,"
+    " ordinal INTEGER,"
+    " UNIQUE(file_hash, blob_hash, ordinal));"
     "CREATE TABLE IF NOT EXISTS file_tags ("
-    "  file_hash INTEGER,"
-    "  tag_key TEXT,"
-    "  tag_val TEXT,"
-    "  UNIQUE(file_hash, tag_key, tag_val));"
+    " file_hash INTEGER,"
+    " tag_key TEXT,"
+    " tag_val TEXT,"
+    " UNIQUE(file_hash, tag_key, tag_val));"
     ;
 static const char * const ADD_FILE =
     "INSERT OR IGNORE INTO files (path, hash, size)"
-    " VALUES(?, ?, ?)";
+    " VALUES(?, ?, ?)"
+    ;
 static const char * const ADD_BLOB =
     "INSERT OR IGNORE INTO blobs (hash, size, blob)"
-    " VALUES(?, ?, ?)";
+    " VALUES(?, ?, ?)"
+    ;
 static const char * const ADD_FILE_BLOB =
     "INSERT OR IGNORE INTO file_blobs (file_hash, blob_hash, ordinal)"
-    " VALUES(?, ?, ?)";
+    " VALUES(?, ?, ?)"
+    ;
 static const char * const ADD_FILE_TAG =
     "INSERT OR IGNORE INTO file_tags (file_hash, tag_key, tag_val)"
-    " VALUES(?, ?, ?)";
+    " VALUES(?, ?, ?)"
+    ;
 
 
 struct node {
@@ -104,7 +109,7 @@ insert_file( const char * const path, Fnv64_t hash, int size)
     sqlite3_stmt * stmt;
 
     if(SQLITE_OK == sqlite3_prepare_v2(DB, ADD_FILE, -1, &stmt, NULL)) {
-        if(SQLITE_OK == sqlite3_bind_text(stmt, 1, path, strnlen(path, 1024),
+        if(SQLITE_OK == sqlite3_bind_text(stmt, 1, path, strnlen(path, MAX_PATH),
                                           SQLITE_STATIC)) {
             if(SQLITE_OK == sqlite3_bind_int64(stmt, 2, hash)) {
                 if(SQLITE_OK == sqlite3_bind_int(stmt, 3, size)) {
@@ -147,9 +152,9 @@ insert_file_tag(Fnv64_t file_hash, const char * const key,
 
     if(SQLITE_OK == sqlite3_prepare_v2(DB, ADD_FILE_TAG, -1, &stmt, NULL)) {
         if(SQLITE_OK == sqlite3_bind_int64(stmt, 1, file_hash)) {
-            if(SQLITE_OK == sqlite3_bind_text(stmt, 2, key, strnlen(key, 1024),
+            if(SQLITE_OK == sqlite3_bind_text(stmt, 2, key, strnlen(key, MAX_PATH),
                                               SQLITE_STATIC)) {
-                if(SQLITE_OK == sqlite3_bind_text(stmt, 3, val, strnlen(val, 1024),
+                if(SQLITE_OK == sqlite3_bind_text(stmt, 3, val, strnlen(val, MAX_PATH),
                                                   SQLITE_STATIC)) {
                     if(SQLITE_DONE == sqlite3_step(stmt)) {
                         // SUCCESS
@@ -163,7 +168,7 @@ insert_file_tag(Fnv64_t file_hash, const char * const key,
 }
 
 unsigned long long int
-fnv_hash(const char * const fp, const double len)
+store_file(const char * const fp, const double len)
 {
     FILE * fd = 0;
     const size_t max = len < MAX_LEN ? len : MAX_LEN;
@@ -199,8 +204,49 @@ fnv_hash(const char * const fp, const double len)
         total += read;
     }
 
-    insert_file(fp, hash, len);
-    insert_file_tag(hash, "path", fp);
+    fclose(fd);
+    buf = realloc(buf, MAX_PATH);
+    char * bp = buf;
+    size_t cwd_len = 0;
+
+    if('/' != fp[0]) {
+        getcwd(buf, MAX_PATH);
+        cwd_len = strnlen(buf, MAX_PATH);
+
+        if (cwd_len < MAX_PATH) {
+            bp = buf + cwd_len + 1;
+            buf[cwd_len] = '/';
+        }
+    }
+
+    strncpy(bp, fp, MAX_PATH - cwd_len - 1);
+    char * fpcopy = realpath(buf, NULL);
+    int fplen = strnlen(fpcopy, MAX_PATH);
+    insert_file(fpcopy, hash, len);
+    insert_file_tag(hash, "path", fpcopy);
+    char * tag = "file";
+    int has_ext = 0;
+
+    for (; fplen >= 0; fplen--) {
+        if(0 == has_ext && '.' == fpcopy[fplen]) {
+            insert_file_tag(hash, "ext", fpcopy + fplen + 1);
+            has_ext++;
+        }
+
+        if('/' == fpcopy[fplen]) {
+            fpcopy[fplen] = '\0';
+            insert_file_tag(hash, tag, fpcopy + fplen + 1);
+            has_ext = -1;
+            tag = "dir";
+        }
+    }
+
+    if('\0' != fpcopy[0]) {
+        insert_file_tag(hash, "dir", fpcopy);
+    }
+
+    free(fpcopy);
+    fpcopy = 0;
 
     while(0 != root) {
         insert_file_blob(hash, root->hash, root->ordinal);
@@ -209,20 +255,15 @@ fnv_hash(const char * const fp, const double len)
         root = prev;
     }
 
-    fclose(fd);
     free(buf);
+    buf = 0;
     return hash;
 }
 
 static int
-print_entry(const char * const fp, const struct stat * const info,
-            const int typeflag, struct FTW * pathinfo)
+process_entry(const char * const fp, const struct stat * const info,
+              const int typeflag, struct FTW * pathinfo)
 {
-    if(0 == strncmp(fp, db_name, strnlen(db_name, 1024))) {
-        fprintf(stdout, " --- (db file) %s\n", fp);
-        return 0;
-    }
-
     double bytes = 0;
     unsigned long long int hash = 0;
 
@@ -236,7 +277,7 @@ print_entry(const char * const fp, const struct stat * const info,
         bytes = (double)info->st_size;
         fprintf(stdout, " ... %s (%0.0f) ", fp, bytes);
 
-        if((hash = fnv_hash(fp, bytes)) == 0) {
+        if((hash = store_file(fp, bytes)) == 0) {
             hash = 0;
         };
 
@@ -263,7 +304,7 @@ print_entry(const char * const fp, const struct stat * const info,
 }
 
 static int
-print_directory(const char * const dir)
+process_directory(const char * const dir)
 {
     int result;
 
@@ -271,7 +312,7 @@ print_directory(const char * const dir)
         return errno  = EINVAL;
     }
 
-    result = nftw(dir, print_entry, 15, FTW_PHYS) ;
+    result = nftw(dir, process_entry, 15, FTW_PHYS) ;
 
     if (result >= 0) {
         errno = result;
@@ -291,7 +332,6 @@ main(int argc, char ** argv)
         return(1);
     }
 
-    db_name = argv[1];
     rc = sqlite3_open(argv[1], &DB);
 
     if(rc) {
@@ -308,7 +348,7 @@ main(int argc, char ** argv)
         return(rc);
     }
 
-    rc = print_directory(argv[2]);
+    rc = process_directory(argv[2]);
 
     if(rc) {
         fprintf(stderr, "Can't walk dir %s; %s\n", argv[2], strerror(errno));
@@ -316,7 +356,6 @@ main(int argc, char ** argv)
         return(rc);
     }
 
-    fprintf(stdout, "Hello indexer!\n");
     sqlite3_close(DB);
     return(0);
 }
