@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+
 #include <errno.h>
 #include <ftw.h>
 #include <stdlib.h>
@@ -222,12 +223,13 @@ store_file(const char * const fp, const double len)
     size_t cwd_len = 0;
 
     if('/' != fp[0]) {
-        getcwd(buf, MAX_PATH);
-        cwd_len = strnlen(buf, MAX_PATH);
+        if(getcwd(buf, MAX_PATH)) {
+            cwd_len = strnlen(buf, MAX_PATH);
 
-        if (cwd_len < MAX_PATH) {
-            bp = buf + cwd_len + 1;
-            buf[cwd_len] = '/';
+            if (cwd_len < MAX_PATH) {
+                bp = buf + cwd_len + 1;
+                buf[cwd_len] = '/';
+            }
         }
     }
 
@@ -419,6 +421,10 @@ main(int argc, char ** argv)
         };
 
         char * query = malloc(fs.st_size + 1);
+
+        for(int i = 0; i <= fs.st_size; i++) {
+            query[i] = '\0';
+        }
 
         if(fread(query, 1, fs.st_size, fd) != fs.st_size ) {
             fprintf(stderr, "Can't read file %s; %s\n", sql_file, strerror(errno));
