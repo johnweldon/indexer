@@ -10,6 +10,10 @@
 #include "fnv/fnv.h"
 
 sqlite3 * DB = 0;
+char * db_name = 0;
+char * sql_file = 0;
+char * root_dir = 0;
+
 
 static const size_t MAX_PATH = 4096;
 static const size_t MAX_LEN = 1 << 30;
@@ -74,12 +78,12 @@ callback(void * notUsed, int argc, char ** argv, char ** azColName)
     int i;
 
     for(i = 0; i < argc; i++) {
-        fprintf(stdout, "%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
+        fprintf(stdout, "%s%s",
+                argv[i] ? argv[i] : "NULL",
+                argc == (i + 1) ? "" : ",");
     }
 
-    fprintf(stdout,
-            "notUsed %p, argc %d, argv %p, azColName %p\n",
-            notUsed, argc, argv, azColName);
+    fprintf(stdout, "\n");
     return 0;
 }
 
@@ -330,18 +334,51 @@ process_directory(const char * const dir)
 int
 main(int argc, char ** argv)
 {
+    int ch;
+
+    while((ch = getopt(argc, argv, "d:q:r:")) != -1) {
+        switch(ch) {
+        case 'd':
+            db_name = optarg;
+            break;
+
+        case 'q':
+            sql_file = optarg;
+            break;
+
+        case 'r':
+            root_dir = optarg;
+            break;
+
+        case '?':
+            return(1);
+
+        default:
+            fprintf(stderr, "Unexpected option 0%o\n", ch);
+            return(1);
+        }
+    }
+
     char * zErrMsg = 0;
     int rc = 0;
 
-    if (argc != 3) {
-        fprintf(stderr, "Usage: %s <db> <root_dir>\n", argv[0]);
+    if (
+        0 == db_name ||
+        (0 == sql_file && 0 == root_dir) ||
+        (0 != sql_file && 0 != root_dir)) {
+        fprintf(
+            stderr,
+            "Usage: %s -d <db> -r <root_dir>\n"
+            "    or %s -d <db> -q <query_file>\n",
+            argv[0],
+            argv[0]);
         return(1);
     }
 
-    rc = sqlite3_open(argv[1], &DB);
+    rc = sqlite3_open(db_name, &DB);
 
     if(rc) {
-        fprintf(stderr, "Can't open db %s; %s\n", argv[1], sqlite3_errmsg(DB));
+        fprintf(stderr, "Can't open db %s; %s\n", db_name, sqlite3_errmsg(DB));
         sqlite3_close(DB);
         return(rc);
     }
@@ -349,17 +386,54 @@ main(int argc, char ** argv)
     rc = sqlite3_exec(DB, INIT_DB, callback, 0, &zErrMsg);
 
     if(rc) {
-        fprintf(stderr, "Can't initialize db %s; %s\n", argv[1], zErrMsg);
+        fprintf(stderr, "Can't initialize db %s; %s\n", db_name, zErrMsg);
         sqlite3_close(DB);
         return(rc);
     }
 
-    rc = process_directory(argv[2]);
+    if(0 != root_dir) {
+        rc = process_directory(root_dir);
 
-    if(rc) {
-        fprintf(stderr, "Can't walk dir %s; %s\n", argv[2], strerror(errno));
-        sqlite3_close(DB);
-        return(rc);
+        if(rc) {
+            fprintf(stderr, "Can't walk dir %s; %s\n", root_dir, strerror(errno));
+            sqlite3_close(DB);
+            return(rc);
+        }
+    }
+
+    if(0 != sql_file) {
+        struct stat fs = {0};
+
+        if(stat(sql_file, &fs)) {
+            fprintf(stderr, "Can't stat file %s; %s\n", sql_file, strerror(errno));
+            return(1);
+        }
+
+        FILE * fd = 0;
+
+        if ((fd = fopen(sql_file, "rb")) == NULL) {
+            fprintf(stderr, "Can't open file %s; %s\n", sql_file, strerror(errno));
+            return(1);
+        };
+
+        char * query = malloc(fs.st_size + 1);
+
+        if(fread(query, 1, fs.st_size, fd) != fs.st_size ) {
+            fprintf(stderr, "Can't read file %s; %s\n", sql_file, strerror(errno));
+            free(query);
+            fclose(fd);
+            return(1);
+        }
+
+        rc = sqlite3_exec(DB, query, callback, 0, &zErrMsg);
+        fclose(fd);
+        free(query);
+
+        if(rc) {
+            fprintf(stderr, "Can't execute script %s; %s\n", sql_file, zErrMsg);
+            sqlite3_close(DB);
+            return(rc);
+        }
     }
 
     sqlite3_close(DB);

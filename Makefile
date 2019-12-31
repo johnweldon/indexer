@@ -45,11 +45,16 @@ all: bin/ix bin/sqlite3
 
 .PHONY: run
 run: bin/ix
-	$< test.db src
+	$< -d test.db -r src
 
 .PHONY: clean
 clean:
 	-rm -rf bin obj
+	-(cd src/fnv; make clean)
+
+.PHONY: clobber
+clobber: clean
+	-rm -rf test.db
 	-(cd src/fnv; make clobber)
 
 bin:
@@ -64,14 +69,17 @@ obj/sqlite3.o: src/sqlite/sqlite3.c | obj
 obj/shell.o: src/sqlite/shell.c | obj
 	$(CC) $(CFLAGS) $(SQLITE_FEATURES) $(INCLUDE) -o $@ $^ -c
 
-obj/main.o: src/main.c | obj src/fnv/libfnv.a
+obj/main.o: src/main.c | obj src/fnv/longlong.h
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ -c
 
-src/fnv/libfnv.a: src/fnv/*.c
+src/fnv/longlong.h:
+	(cd src/fnv; make longlong.h)
+
+src/fnv/libfnv.a: src/fnv/*.c src/fnv/longlong.h
 	(cd src/fnv; make libfnv.a)
 
 bin/sqlite3: obj/sqlite3.o obj/shell.o | bin
 	$(CC) $(CFLAGS) $(SQLITE_FEATURES) $(LIBDIR) -o $@ $^ $(LIBS)
 
-bin/ix: obj/sqlite3.o obj/main.o | bin src/fnv/libfnv.a
+bin/ix: obj/sqlite3.o obj/main.o src/fnv/libfnv.a | bin
 	$(CC) $(CFLAGS) $(SQLITE_FEATURES) $(LIBDIR) -o $@ $^ $(LIBS) -lfnv
