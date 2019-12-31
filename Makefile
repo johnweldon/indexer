@@ -1,21 +1,19 @@
 SHELL := bash
 .ONESHELL:
-.SHELLFLAGS := -eu -o -pipefail -c
+.SHELLFLAGS := -eu -o pipefail -c
 .DELETE_ON_ERROR:
 MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 
-CFLAGS = -Oz -O3
-INCLUDE = \
+CFLAGS += -Os -O2
+INCLUDE += \
 		-I ./src \
-		-I ./src/sqlite \
-		-I ./src/fnv \
 		-I /usr/local/include \
 		-I /usr/local/opt/icu4c/include
-LIBDIR = \
+LIBDIR += \
 		-L ./src/fnv \
 		-L /usr/local/opt/icu4c/lib
-LIBS = \
+LIBS += \
 		-lreadline \
 		-lncurses \
 		-licui18n \
@@ -23,11 +21,9 @@ LIBS = \
 		-licuio \
 		-licutu \
 		-licuuc \
-		-ldl
+		-ldl -lm -lpthread
 
-CC = clang
-
-SQLITE_FEATURES = \
+SQLITE_FEATURES += \
 		-DSQLITE_THREADSAFE=1 \
 		-DSQLITE_ENABLE_FTS4 \
 		-DSQLITE_ENABLE_FTS5 \

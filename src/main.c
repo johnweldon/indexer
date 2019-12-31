@@ -1,13 +1,15 @@
+#define _XOPEN_SOURCE 700
 #include <errno.h>
 #include <ftw.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 
-#include "sqlite3.h"
 #include "main.h"
 #include "fnv/fnv.h"
+#include "sqlite/sqlite3.h"
 
 sqlite3 * DB = 0;
 char * db_name = 0;
