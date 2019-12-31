@@ -1,6 +1,3 @@
-.headers ON
-.mode csv
-
 SELECT
   tag_key,
   tag_val,

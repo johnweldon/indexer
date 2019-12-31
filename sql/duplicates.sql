@@ -1,6 +1,3 @@
-.headers ON
-.mode csv
-
 WITH q AS (
   SELECT 
     file_hash, 

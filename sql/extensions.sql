@@ -1,6 +1,3 @@
-.headers ON
-.mode csv
-
 SELECT
   tag_val,
   count(1) num

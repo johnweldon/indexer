@@ -1,6 +1,3 @@
-.headers ON
-.mode csv
-
 SELECT
   fn.hash,
   fn.size,
