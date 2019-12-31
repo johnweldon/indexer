@@ -65,7 +65,7 @@ obj/sqlite3.o: src/sqlite/sqlite3.c | obj
 obj/shell.o: src/sqlite/shell.c | obj
 	$(CC) $(CFLAGS) $(SQLITE_FEATURES) $(INCLUDE) -o $@ $^ -c
 
-obj/main.o: src/main.c | obj src/fnv/longlong.h
+obj/%.o: src/%.c | obj src/fnv/longlong.h
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ -c
 
 src/fnv/longlong.h:
@@ -77,5 +77,5 @@ src/fnv/libfnv.a: src/fnv/*.c src/fnv/longlong.h
 bin/sqlite3: obj/sqlite3.o obj/shell.o | bin
 	$(CC) $(CFLAGS) $(SQLITE_FEATURES) $(LIBDIR) -o $@ $^ $(LIBS)
 
-bin/ix: obj/sqlite3.o obj/main.o src/fnv/libfnv.a | bin
+bin/ix: obj/sqlite3.o obj/main.o obj/index.o src/fnv/libfnv.a | bin
 	$(CC) $(CFLAGS) $(SQLITE_FEATURES) $(LIBDIR) -o $@ $^ $(LIBS) -lfnv

@@ -1,6 +1,6 @@
-#ifndef _SRC_MAIN_
-#define _SRC_MAIN_
+#ifndef _SRC_MAIN_H_
+#define _SRC_MAIN_H_
 
 
 
-#endif /* _SRC_MAIN_ */
+#endif /* _SRC_MAIN_H_ */
